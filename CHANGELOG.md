@@ -7,6 +7,7 @@
 
 - [#3180](https://github.com/influxdb/influxdb/pull/3180): Log GOMAXPROCS, version, and commit on startup.
 - [#3218](https://github.com/influxdb/influxdb/pull/3218): Allow write timeouts to be configurable.
+- [#3244](https://github.com/influxdb/influxdb/pull/3244): Wire up admin privilege grant and revoke.
 
 
 ## v0.9.1 [2015-07-02]
