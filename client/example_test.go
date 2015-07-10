@@ -111,3 +111,35 @@ func ExampleClient_Write() {
 		log.Fatal(err)
 	}
 }
+
+func ExampleBufferedClient_Test() {
+	host, err := url.Parse(fmt.Sprintf("http://%s:%d", "localhost", 8086))
+	if err != nil {
+		log.Fatal(err)
+	}
+	con, err := client.NewBufferedClient(client.Config{URL: *host}, client.BufferConfig{BufferMaxSize: 10, FlushMaxWaitTime: 10 * time.Second})
+	if err != nil {
+		log.Fatal(err)
+	}
+	rand.Seed(42)
+	makePoint := func() client.Point {
+		return client.Point{
+			Measurement: "shapes",
+			Tags: map[string]string{
+				"color": strconv.Itoa(rand.Intn(len(colors))),
+				"shape": strconv.Itoa(rand.Intn(len(shapes))),
+			},
+			Fields: map[string]interface{}{
+				"value": rand.Intn(sampleSize),
+			},
+			Time:      time.Now(),
+			Precision: "s",
+		}
+	}
+	con.BatchWrite(makePoint())
+	con.BatchWrite(makePoint())
+	con.BatchWrite(makePoint())
+	con.BatchWrite(makePoint())
+	con.BatchWrite(makePoint())
+	con.BatchWrite(makePoint())
+}
