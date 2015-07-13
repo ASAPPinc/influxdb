@@ -3,59 +3,63 @@ package client
 import "time"
 
 type BufferConfig struct {
-	BufferMaxSize    int
+	FlushMaxPoints   int
 	FlushMaxWaitTime time.Duration
 }
 
 func NewBufferedClient(clientConfig Config, bufferConfig BufferConfig) (bufferedClient *BufferedClient, err error) {
-	client, err := NewClient(c)
+	client, err := NewClient(clientConfig)
 	if err != nil {
 		return
 	}
-	bufferedClient = &BufferedClient{client, bufferConfig}
-	go bufferedClient.ingestLoop()
-	go bufferedClient.flushLoop()
-	return bufferedClient
+	ingestChan := make(chan Point, 10000)
+	flushTimer := time.NewTimer(bufferConfig.FlushMaxWaitTime)
+	bufferedClient = &BufferedClient{client, bufferConfig, ingestChan, flushTimer, BatchPoints{}}
+	go bufferedClient.ingestAndFlushLoop()
+	return
 }
 
 type BufferedClient struct {
 	*Client
 	bufferConfig BufferConfig
-	batch        *BatchPoints
 	ingestChan   chan Point
-	flushChan    chan bool
+	flushTimer   *time.Timer
+	batch        BatchPoints
 }
 
-func (b *BufferedClient) BatchWrite(point) {
-
+func (b *BufferedClient) Add(measurement string, val interface{}, tags map[string]string) {
+	b.ingestChan <- Point{
+		Measurement: measurement,
+		Tags:        tags,
+		Fields: map[string]interface{}{
+			"value": val,
+		},
+		// Time        time.Time
+		// Precision   string
+		// Raw         string
+	}
 }
 
 // Async ingest and flush loops
 ///////////////////////////////
 
-func (b *BufferedClient) ingestLoop() {
+func (b *BufferedClient) ingestAndFlushLoop() {
 	for { // loop indefinitely
-		point := <-b.ingestChan
-		b.batch.Points = append(b.batch.Points, point)
-		if len(b.batch.Points) > b.bufferConfig.BufferMaxSize {
+		select {
+		case point := <-b.ingestChan:
+			b.batch.Points = append(b.batch.Points, point)
+			if len(b.batch.Points) > b.bufferConfig.FlushMaxPoints {
+				b.initiateFlush()
+			}
+		case <-b.flushTimer.C:
 			b.initiateFlush()
 		}
 	}
 }
 
 func (b *BufferedClient) initiateFlush() {
-	b.flushChan <- b.batch
-	b.batch = b.newBatch()
-}
-
-func (b *BufferedClient) flushLoop() {
-	for { // loop indefinitely
-		select {
-		case <-time.After(b.bufferConfig.FlushMaxWaitTime):
-
-		case <-b.flushChan:
-
-		}
-
-	}
+	b.flushTimer.Stop()
+	b.Client.Write(b.batch)
+	b.batch.Points = nil
+	b.flushTimer.Reset(b.bufferConfig.FlushMaxWaitTime)
 }
