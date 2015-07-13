@@ -546,7 +546,7 @@ func TestBufferedClient_Write(t *testing.T) {
 
 	u, _ := url.Parse(ts.URL)
 	config := client.Config{URL: *u}
-	bufferConfig := client.BufferConfig{FlushMaxPoints: 10, FlushMaxWaitTime: 1 * time.Second}
+	bufferConfig := client.BufferConfig{FlushMaxPoints: 25, FlushMaxWaitTime: 1 * time.Second}
 	c, err := client.NewBufferedClient(config, bufferConfig)
 	if err != nil {
 		t.Fatalf("unexpected error.  expected %v, actual %v", nil, err)
@@ -567,7 +567,7 @@ func TestBufferedClient_Write(t *testing.T) {
 		c.Add("shapes", rand.Intn(sampleSize), makeTags())
 	}
 	<-time.After(100 * time.Millisecond)
-	if flushCount < 3 {
+	if flushCount < sampleSize/bufferConfig.FlushMaxPoints {
 		t.Fatal("Server did not flush")
 	}
 }

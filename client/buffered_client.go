@@ -12,9 +12,14 @@ func NewBufferedClient(clientConfig Config, bufferConfig BufferConfig) (buffered
 	if err != nil {
 		return
 	}
-	ingestChan := make(chan Point, 10000)
-	flushTimer := time.NewTimer(bufferConfig.FlushMaxWaitTime)
-	bufferedClient = &BufferedClient{client, bufferConfig, ingestChan, flushTimer, BatchPoints{}}
+	bufferedClient = &BufferedClient{
+		Client:       client,
+		bufferConfig: bufferConfig,
+		ingestChan:   make(chan Point, bufferConfig.FlushMaxPoints/3),
+		flushTimer:   time.NewTimer(bufferConfig.FlushMaxWaitTime),
+		pointsBuf:    make([]Point, bufferConfig.FlushMaxPoints),
+		pointsIndex:  0,
+	}
 	go bufferedClient.ingestAndFlushLoop()
 	return
 }
@@ -24,42 +29,42 @@ type BufferedClient struct {
 	bufferConfig BufferConfig
 	ingestChan   chan Point
 	flushTimer   *time.Timer
-	batch        BatchPoints
+	pointsBuf    []Point
+	pointsIndex  int
 }
 
 func (b *BufferedClient) Add(measurement string, val interface{}, tags map[string]string) {
 	b.ingestChan <- Point{
 		Measurement: measurement,
 		Tags:        tags,
-		Fields: map[string]interface{}{
-			"value": val,
-		},
-		// Time        time.Time
-		// Precision   string
-		// Raw         string
+		Fields:      map[string]interface{}{"value": val},
+		Time:        time.Now(),
 	}
 }
 
-// Async ingest and flush loops
-///////////////////////////////
+// Async ingest and flush loop
+//////////////////////////////
 
 func (b *BufferedClient) ingestAndFlushLoop() {
 	for { // loop indefinitely
 		select {
 		case point := <-b.ingestChan:
-			b.batch.Points = append(b.batch.Points, point)
-			if len(b.batch.Points) > b.bufferConfig.FlushMaxPoints {
-				b.initiateFlush()
+			b.pointsBuf[b.pointsIndex] = point
+			b.pointsIndex += 1
+			if b.pointsIndex == b.bufferConfig.FlushMaxPoints {
+				b.flushBatch()
 			}
 		case <-b.flushTimer.C:
-			b.initiateFlush()
+			b.flushBatch()
 		}
 	}
 }
 
-func (b *BufferedClient) initiateFlush() {
+func (b *BufferedClient) flushBatch() {
 	b.flushTimer.Stop()
-	b.Client.Write(b.batch)
-	b.batch.Points = nil
+	b.Client.Write(BatchPoints{
+		Points: b.pointsBuf[0:b.pointsIndex],
+	})
+	b.pointsIndex = 0
 	b.flushTimer.Reset(b.bufferConfig.FlushMaxWaitTime)
 }
