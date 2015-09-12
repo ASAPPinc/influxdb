@@ -11,8 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/influxdb/influxdb/influxql"
-	"github.com/influxdb/influxdb/tsdb"
+	"github.com/influxdb/influxdb/client/points"
 )
 
 // Query is used to send a command to the server. Both Command and Database are required.
@@ -241,20 +240,20 @@ func (c *Client) Dump(db string) (io.ReadCloser, error) {
 
 // Result represents a resultset returned from a single statement.
 type Result struct {
-	Series []influxql.Row
-	Err    error
+	// Series []influxql.Row
+	Err error
 }
 
 // MarshalJSON encodes the result into JSON.
 func (r *Result) MarshalJSON() ([]byte, error) {
 	// Define a struct that outputs "error" as a string.
 	var o struct {
-		Series []influxql.Row `json:"series,omitempty"`
-		Err    string         `json:"error,omitempty"`
+		// Series []influxql.Row `json:"series,omitempty"`
+		Err string `json:"error,omitempty"`
 	}
 
 	// Copy fields to output struct.
-	o.Series = r.Series
+	// o.Series = r.Series
 	if r.Err != nil {
 		o.Err = r.Err.Error()
 	}
@@ -265,8 +264,8 @@ func (r *Result) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON decodes the data into the Result struct
 func (r *Result) UnmarshalJSON(b []byte) error {
 	var o struct {
-		Series []influxql.Row `json:"series,omitempty"`
-		Err    string         `json:"error,omitempty"`
+		// Series []influxql.Row `json:"series,omitempty"`
+		Err string `json:"error,omitempty"`
 	}
 
 	dec := json.NewDecoder(bytes.NewBuffer(b))
@@ -275,7 +274,7 @@ func (r *Result) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	r.Series = o.Series
+	// r.Series = o.Series
 	if o.Err != "" {
 		r.Err = errors.New(o.Err)
 	}
@@ -376,7 +375,7 @@ func (p *Point) MarshalJSON() ([]byte, error) {
 }
 
 func (p *Point) MarshalString() string {
-	return tsdb.NewPoint(p.Measurement, p.Tags, p.Fields, p.Time).String()
+	return points.NewPoint(p.Measurement, p.Tags, p.Fields, p.Time).String()
 }
 
 // UnmarshalJSON decodes the data into the Point struct
