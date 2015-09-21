@@ -1,6 +1,13 @@
 package client
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"time"
+)
 
 // BufferConfig is used to specify how frequently a BufferedClient should flush its dataset to the influxdb server.
 // Database: The Database to write points to (gets passed through to BatchPoints).
@@ -20,6 +27,7 @@ func NewBufferedClient(clientConfig Config, bufferConfig BufferConfig) (buffered
 	}
 	bufferedClient = &BufferedClient{
 		Client:       client,
+		clientConfig: clientConfig,
 		bufferConfig: bufferConfig,
 		ingestChan:   make(chan Point, bufferConfig.FlushMaxPoints/3),
 		closeChan:    make(chan chan error, 1),
@@ -27,6 +35,12 @@ func NewBufferedClient(clientConfig Config, bufferConfig BufferConfig) (buffered
 		pointsBuf:    make([]Point, bufferConfig.FlushMaxPoints),
 		pointsIndex:  0,
 	}
+
+	err = bufferedClient.createDatabase()
+	if err != nil {
+		return
+	}
+
 	go bufferedClient.ingestAndFlushLoop()
 	return
 }
@@ -34,6 +48,7 @@ func NewBufferedClient(clientConfig Config, bufferConfig BufferConfig) (buffered
 // BufferedClient is used to buffer points in memory and periodically flush them to the server
 type BufferedClient struct {
 	*Client
+	clientConfig Config
 	bufferConfig BufferConfig
 	ingestChan   chan Point
 	closeChan    chan chan error
@@ -147,4 +162,22 @@ func (b *BufferedClient) flushBatch() {
 	})
 	b.pointsIndex = 0
 	b.flushTimer.Reset(b.bufferConfig.FlushMaxWaitTime)
+}
+
+// Misc
+///////
+
+func (b *BufferedClient) createDatabase() (err error) {
+	values := url.Values{}
+	values.Add("q", "CREATE DATABASE "+b.bufferConfig.Database)
+	res, err := http.Get(b.clientConfig.URL.String() + "/query?" + values.Encode())
+	if err != nil {
+		return
+	}
+	if res.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(res.Body)
+		err = errors.New(fmt.Sprint("Non-200 status code: ", res.StatusCode, ". Response: ", string(body)))
+		return
+	}
+	return
 }
