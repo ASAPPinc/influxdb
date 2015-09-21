@@ -45,6 +45,7 @@ type BufferedClient struct {
 // Add a Point with the given values to the BufferedClient.
 // If the BufferedClient is closed, didAdd is false
 func (b *BufferedClient) Add(measurement string, val interface{}, tags map[string]string, fields map[string]interface{}) (didAdd bool) {
+	return b.workaroundAdd(measurement, val, tags, fields)
 	ingestChan := b.ingestChan
 	if ingestChan == nil {
 		return
@@ -61,6 +62,23 @@ func (b *BufferedClient) Add(measurement string, val interface{}, tags map[strin
 	}
 	didAdd = true
 	return
+}
+
+// Bizarre bug, possibly in go.
+// When sending both Point values into ingestChan with point.Fields["value"] = int(1), and
+// then Point values with point.Fields["value"] = float64(0.0017496410000000001), then
+// all points come out the other side of the ingestChan with point.Fields["value"] set to float64(1)...
+func (b *BufferedClient) workaroundAdd(measurement string, val interface{}, tags map[string]string, fields map[string]interface{}) (didAdd bool) {
+	b.Client.Write(BatchPoints{
+		Points: []Point{{
+			Measurement: measurement,
+			Tags:        tags,
+			Fields:      fields,
+			Time:        time.Now(),
+		}},
+		Database: b.bufferConfig.Database,
+	})
+	return true
 }
 
 // Close will close the BufferedClient. While closing, it will flush any points from Add()
