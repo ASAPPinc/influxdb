@@ -72,6 +72,54 @@ func (c *Client) SetAuth(u, p string) {
 
 // Query sends a command to the server and returns the Response
 func (c *Client) Query(q Query) (*Response, error) {
+	response := &Response{}
+	err := c.QueryDecode(q, response)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+func (c *Client) QueryDecode(q Query, response interface{}) error {
+	resp, err := c.query(q)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	dec := json.NewDecoder(resp.Body)
+	dec.UseNumber()
+	decErr := dec.Decode(&response)
+
+	// ignore this error if we got an invalid status code
+	if decErr != nil && decErr.Error() == "EOF" && resp.StatusCode != http.StatusOK {
+		decErr = nil
+	}
+	// If we got a valid decode error, send that back
+	if decErr != nil {
+		return decErr
+	}
+	// If we don't have an error in our json response, and didn't get  statusOK, then send back an error
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("received status code %d from server", resp.StatusCode)
+	}
+	return nil
+}
+func (c *Client) QueryRawJSON(q Query) (string, error) {
+	resp, err := c.query(q)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("received status code %d from server", resp.StatusCode)
+	}
+	jsonBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
+func (c *Client) query(q Query) (*http.Response, error) {
 	u := c.url
 
 	u.Path = "query"
@@ -93,26 +141,7 @@ func (c *Client) Query(q Query) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	var response Response
-	dec := json.NewDecoder(resp.Body)
-	dec.UseNumber()
-	decErr := dec.Decode(&response)
-
-	// ignore this error if we got an invalid status code
-	if decErr != nil && decErr.Error() == "EOF" && resp.StatusCode != http.StatusOK {
-		decErr = nil
-	}
-	// If we got a valid decode error, send that back
-	if decErr != nil {
-		return nil, decErr
-	}
-	// If we don't have an error in our json response, and didn't get  statusOK, then send back an error
-	if resp.StatusCode != http.StatusOK && response.Error() == nil {
-		return &response, fmt.Errorf("received status code %d from server", resp.StatusCode)
-	}
-	return &response, nil
+	return resp, err
 }
 
 // Write takes BatchPoints and allows for writing of multiple points with defaults
