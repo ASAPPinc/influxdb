@@ -60,7 +60,6 @@ type BufferedClient struct {
 // Add a Point with the given values to the BufferedClient.
 // If the BufferedClient is closed, didAdd is false
 func (b *BufferedClient) Add(measurement string, val interface{}, tags map[string]string, fields map[string]interface{}) (didAdd bool) {
-	return b.workaroundAdd(measurement, val, tags, fields)
 	ingestChan := b.ingestChan
 	if ingestChan == nil {
 		return
@@ -69,6 +68,7 @@ func (b *BufferedClient) Add(measurement string, val interface{}, tags map[strin
 		fields = make(map[string]interface{}, 1)
 	}
 	fields["value"] = val
+	return b.workaroundAdd(measurement, tags, fields)
 	ingestChan <- Point{
 		Measurement: measurement,
 		Tags:        tags,
@@ -83,7 +83,7 @@ func (b *BufferedClient) Add(measurement string, val interface{}, tags map[strin
 // When sending both Point values into ingestChan with point.Fields["value"] = int(1), and
 // then Point values with point.Fields["value"] = float64(0.0017496410000000001), then
 // all points come out the other side of the ingestChan with point.Fields["value"] set to float64(1)...
-func (b *BufferedClient) workaroundAdd(measurement string, val interface{}, tags map[string]string, fields map[string]interface{}) (didAdd bool) {
+func (b *BufferedClient) workaroundAdd(measurement string, tags map[string]string, fields map[string]interface{}) (didAdd bool) {
 	b.Client.Write(BatchPoints{
 		Points: []Point{{
 			Measurement: measurement,
